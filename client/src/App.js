@@ -1,73 +1,135 @@
-import React, { Component } from "react";
-import SimpleStorageContract from "./contracts/SimpleStorage.json";
-import getWeb3 from "./getWeb3";
+import React, { useCallback } from 'react'
+import {
+  Button,
+  Header,
+  IconPlus,
+  Main,
+  SyncIndicator,
+  useLayout,
+} from '@aragon/ui'
+import { useGuiStyle } from '@aragon/api-react'
+import NewVotePanel from './components/NewVotePanel'
+import useFilterVotes from './hooks/useFilterVotes'
+import useScrollTop from './hooks/useScrollTop'
+import NoVotes from './screens/NoVotes'
+import VoteDetail from './screens/VoteDetail'
+import Votes from './screens/Votes'
+import { useAppLogic } from './app-logic'
+import { IdentityProvider } from './identity-manager'
+import { SettingsProvider } from './vote-settings-manager'
 
-import "./App.css";
+const App = React.memo(function App() {
+  const {
+    actions,
+    executionTargets,
+    isSyncing,
+    newVotePanel,
+    selectVote,
+    selectedVote,
+    votes,
+  } = useAppLogic()
 
-class App extends Component {
-  state = { storageValue: 0, web3: null, accounts: null, contract: null };
+  const { appearance } = useGuiStyle()
 
-  componentDidMount = async () => {
-    try {
-      // Get network provider and web3 instance.
-      const web3 = await getWeb3();
+  const { layoutName } = useLayout()
+  const compactMode = layoutName === 'small'
+  const handleBack = useCallback(() => selectVote(-1), [selectVote])
 
-      // Use web3 to get the user's accounts.
-      const accounts = await web3.eth.getAccounts();
+  const {
+    filteredVotes,
+    voteStatusFilter,
+    handleVoteStatusFilterChange,
+    voteOutcomeFilter,
+    handleVoteOutcomeFilterChange,
+    voteTrendFilter,
+    handleVoteTrendFilterChange,
+    voteAppFilter,
+    handleVoteAppFilterChange,
+    voteDateRangeFilter,
+    handleVoteDateRangeFilterChange,
+    handleClearFilters,
+  } = useFilterVotes(votes, executionTargets)
 
-      // Get the contract instance.
-      const networkId = await web3.eth.net.getId();
-      const deployedNetwork = SimpleStorageContract.networks[networkId];
-      const instance = new web3.eth.Contract(
-        SimpleStorageContract.abi,
-        deployedNetwork && deployedNetwork.address,
-      );
+  useScrollTop(selectedVote)
 
-      // Set web3, accounts, and contract to the state, and then proceed with an
-      // example of interacting with the contract's methods.
-      this.setState({ web3, accounts, contract: instance }, this.runExample);
-    } catch (error) {
-      // Catch any errors for any of the above operations.
-      alert(
-        `Failed to load web3, accounts, or contract. Check console for details.`,
-      );
-      console.error(error);
-    }
-  };
+  return (
+    <Main theme={appearance} assetsUrl="./aragon-ui">
+      <React.Fragment>
+        {votes.length === 0 && (
+          <div
+            css={`
+              height: 100vh;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            `}
+          >
+            <NoVotes
+              onNewVote={newVotePanel.requestOpen}
+              isSyncing={isSyncing}
+            />
+          </div>
+        )}
+        {votes.length > 0 && (
+          <React.Fragment>
+            <SyncIndicator visible={isSyncing} shift={50} />
+            <Header
+              primary="Voting"
+              secondary={
+                !selectedVote && (
+                  <Button
+                    mode="strong"
+                    onClick={newVotePanel.requestOpen}
+                    label="New vote"
+                    icon={<IconPlus />}
+                    display={compactMode ? 'icon' : 'label'}
+                  />
+                )
+              }
+            />
+            {selectedVote ? (
+              <VoteDetail
+                vote={selectedVote}
+                onBack={handleBack}
+                onVote={actions.vote}
+                onExecute={actions.execute}
+              />
+            ) : (
+              <Votes
+                votes={votes}
+                selectVote={selectVote}
+                executionTargets={executionTargets}
+                filteredVotes={filteredVotes}
+                voteStatusFilter={voteStatusFilter}
+                handleVoteStatusFilterChange={handleVoteStatusFilterChange}
+                voteOutcomeFilter={voteOutcomeFilter}
+                handleVoteOutcomeFilterChange={handleVoteOutcomeFilterChange}
+                voteTrendFilter={voteTrendFilter}
+                handleVoteTrendFilterChange={handleVoteTrendFilterChange}
+                voteAppFilter={voteAppFilter}
+                handleVoteAppFilterChange={handleVoteAppFilterChange}
+                voteDateRangeFilter={voteDateRangeFilter}
+                handleVoteDateRangeFilterChange={
+                  handleVoteDateRangeFilterChange
+                }
+                handleClearFilters={handleClearFilters}
+              />
+            )}
+          </React.Fragment>
+        )}
+        <NewVotePanel
+          onCreateVote={actions.createVote}
+          panelState={newVotePanel}
+        />
+      </React.Fragment>
+    </Main>
+  )
+})
 
-  runExample = async () => {
-    const { accounts, contract } = this.state;
-
-    // Stores a given value, 5 by default.
-    await contract.methods.set(5).send({ from: accounts[0] });
-
-    // Get the value from the contract to prove it worked.
-    const response = await contract.methods.get().call();
-
-    // Update state with the result.
-    this.setState({ storageValue: response });
-  };
-
-  render() {
-    if (!this.state.web3) {
-      return <div>Loading Web3, accounts, and contract...</div>;
-    }
-    return (
-      <div className="App">
-        <h1>Good to Go!</h1>
-        <p>Your Truffle Box is installed and ready.</p>
-        <h2>Smart Contract Example</h2>
-        <p>
-          If your contracts compiled and migrated successfully, below will show
-          a stored value of 5 (by default).
-        </p>
-        <p>
-          Try changing the value stored on <strong>line 40</strong> of App.js.
-        </p>
-        <div>The stored value is: {this.state.storageValue}</div>
-      </div>
-    );
-  }
-}
-
-export default App;
+export default () => (
+  <IdentityProvider>
+    <SettingsProvider>
+      <App />
+    </SettingsProvider>
+  </IdentityProvider>
+)
